@@ -1,11 +1,11 @@
 class GreedyBot:
-    def choose_move(self, game, roll):
+    def choose(self, game, roll):
         moves = game.legal_moves(roll)
         if not moves:
             return None
 
         best = None
-        best_score = -1
+        best_score = -1e9
 
         for m in moves:
             g2 = game.clone()

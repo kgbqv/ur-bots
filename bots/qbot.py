@@ -1,24 +1,29 @@
+# bots/qbot.py
 import pickle
+from pathlib import Path
 import random
 
 class QBot:
-    def __init__(self, filename):
-        with open(filename,"rb") as f:
-            self.q = pickle.load(f)
+    def __init__(self, filename="trained/QBot.pkl"):
+        self.Q = {}
+        if Path(filename).exists():
+            with open(filename, "rb") as f:
+                self.Q = pickle.load(f)
 
-    def state_key(self, game):
-        return tuple(game.pos[0] + game.pos[1] + [game.turn])
+    def encode_state(self, game):
+        return (
+            tuple(game.pos[0]),
+            tuple(game.pos[1]),
+            game.turn
+        )
 
-    def choose_move(self, game, roll):
+    def choose(self, game, roll):
         moves = game.legal_moves(roll)
         if not moves:
             return None
 
-        best, best_q = None, -1e9
-        for m in moves:
-            key = (self.state_key(game), roll, m)
-            val = self.q.get(key, 0)
-            if val > best_q:
-                best_q = val
-                best = m
-        return best if best is not None else random.choice(moves)
+        state = self.encode_state(game)
+        qs = [self.Q.get((state, m), 0.0) for m in moves]
+        maxq = max(qs)
+        best = [m for m, q in zip(moves, qs) if q == maxq]
+        return random.choice(best)

@@ -1,21 +1,29 @@
 from ur.game import UrGame
-from bots.random_bot import RandomBot
-from bots.greedy_bot import GreedyBot
+import random
 
-def play(botA, botB):
-    game = UrGame()
-    bots = [botA, botB]
-
-    while not game.winner():
-        roll = game.roll()
+class RandomBot:
+    def choose(self, game, roll):
         moves = game.legal_moves(roll)
         if not moves:
-            game.turn ^= 1
-            continue
-        move = bots[game.turn].choose_move(game.clone(), roll)
-        game.play_move(move, roll)
+            return None
+        return random.choice(moves)
 
-    print("Winner:", game.winner())
+def play(bot1, bot2):
+    game = UrGame()
+
+    while game.winner is None:
+        roll = game.roll_dice()
+        moves = game.legal_moves(roll)
+
+        if not moves:
+            game.turn = 1 - game.turn
+            continue
+
+        bot = bot1 if game.turn == 0 else bot2
+        choice = bot.choose(game, roll)
+        game.play_move(choice, roll)
+
+    print("Winner:", game.winner+1)
 
 if __name__ == "__main__":
-    play(RandomBot(), GreedyBot())
+    play(RandomBot(), RandomBot())
