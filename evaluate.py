@@ -2,6 +2,9 @@
 import sys
 import importlib
 from pathlib import Path
+import time
+from collections import defaultdict
+
 
 import numpy as np
 import pandas as pd
@@ -86,6 +89,22 @@ def make_bot(cls):
         # Otherwise assume it needs a filename
         filename = Path("trained") / f"{cls.__name__}.pkl"
         return cls(filename)
+    
+class TimedBot:
+    def __init__(self, bot, name, stats):
+        self.bot = bot
+        self.name = name
+        self.stats = stats
+
+    def choose(self, game, roll):
+        t0 = time.perf_counter()
+        move = self.bot.choose(game, roll)
+        dt = time.perf_counter() - t0
+
+        self.stats[self.name]["time"] += dt
+        self.stats[self.name]["calls"] += 1
+
+        return move
 
 def run_tournament(games_per_pair=100):
     bot_classes = load_bots()
@@ -97,8 +116,11 @@ def run_tournament(games_per_pair=100):
 
     pairwise = np.full((M, M), np.nan)
 
+    # timing stats
+    timing_stats = defaultdict(lambda: {"time": 0.0, "calls": 0})
+
     total_pairs = M * (M - 1) // 2
-    pbar = tqdm(total=total_pairs, desc="Pairings")
+    pbar = tqdm(total=total_pairs)
 
     for i in range(M):
         for j in range(i + 1, M):
@@ -108,16 +130,15 @@ def run_tournament(games_per_pair=100):
             winsA = 0
 
             for k in range(games_per_pair):
-                # Alternate who is player 0
+                pbar.set_description(f"{nameA} vs {nameB}")
+                # alternate starting player
                 if k % 2 == 0:
-                    bot0 = make_bot(bot_classes[nameA])
-                    bot1 = make_bot(bot_classes[nameB])
-
+                    bot0 = TimedBot(make_bot(bot_classes[nameA]), nameA, timing_stats)
+                    bot1 = TimedBot(make_bot(bot_classes[nameB]), nameB, timing_stats)
                     mapA_player = 0
                 else:
-                    bot0 = make_bot(bot_classes[nameA])
-                    bot1 = make_bot(bot_classes[nameB])
-
+                    bot0 = TimedBot(make_bot(bot_classes[nameB]), nameB, timing_stats)
+                    bot1 = TimedBot(make_bot(bot_classes[nameA]), nameA, timing_stats)
                     mapA_player = 1
 
                 winner = play_game(bot0, bot1)
@@ -139,14 +160,13 @@ def run_tournament(games_per_pair=100):
             pbar.update(1)
 
     pbar.close()
-    return names, overall_wins, overall_games, pairwise
-
+    return names, overall_wins, overall_games, pairwise, timing_stats
 
 # ---------------------------
 # Plot + Save
 # ---------------------------
 
-def save_results(names, overall_wins, overall_games, pairwise):
+def save_results(names, overall_wins, overall_games, pairwise,timing_stats):
     # ---- overall dataframe ----
     rows = []
     for n in names:
@@ -187,6 +207,34 @@ def save_results(names, overall_wins, overall_games, pairwise):
     print("overall_winrates.png")
     print("pairwise_matrix.csv")
     print("pairwise_heatmap.png")
+        # ---- timing stats ----
+    timing_rows = []
+    for n in names:
+        calls = timing_stats[n]["calls"]
+        total = timing_stats[n]["time"]
+        avg = total / calls if calls > 0 else 0.0
+        timing_rows.append([n, calls, total, avg])
+
+    tdf = pd.DataFrame(
+        timing_rows,
+        columns=["bot", "calls", "total_time_sec", "avg_time_per_call_sec"]
+    )
+    tdf = tdf.sort_values("avg_time_per_call_sec", ascending=False)
+    tdf.to_csv("bot_timings.csv", index=False)
+
+    # ---- timing bar plot ----
+    plt.figure(figsize=(10,6))
+    plt.bar(tdf["bot"], tdf["avg_time_per_call_sec"])
+    plt.ylabel("Avg time per move (seconds)")
+    plt.title("Bot Decision Time (Bottleneck Analysis)")
+    plt.xticks(rotation=45, ha="right")
+    plt.tight_layout()
+    plt.savefig("bot_avg_time.png")
+    plt.close()
+
+    print("bot_timings.csv")
+    print("bot_avg_time.png")
+
 
 
 # ---------------------------
@@ -194,5 +242,5 @@ def save_results(names, overall_wins, overall_games, pairwise):
 # ---------------------------
 
 if __name__ == "__main__":
-    names, wins, games, pairwise = run_tournament(games_per_pair=100)
-    save_results(names, wins, games, pairwise)
+    names, wins, games, pairwise,timing_stats = run_tournament(games_per_pair=20)
+    save_results(names, wins, games, pairwise,timing_stats)

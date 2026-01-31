@@ -116,3 +116,4 @@ def can_opp_capture_after_move(game, player: int, piece: int, roll: int) -> bool
             return True
 
     return False
+
